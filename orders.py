@@ -99,6 +99,24 @@ class PreOrder:
     def __hash__(self):
         return hash(tuple([frozenset(self.elements), frozenset(self.relations)]))
 
+    def __repr__(self) -> str:
+        # Use edges of the Hasse diagram for concise representation
+        edges = list(self.hasse_diagram.edges())
+        edges_to_show = []
+        # if node has only one element, show that element instead of frozenset
+        # if node has multiple elements, show as a set with curly braces
+        for edge in edges:
+            u, v = edge
+            if len(u) == 1:
+                u = next(iter(u))
+            else:
+                u = "{" + ", ".join(map(str, u)) + "}"
+            if len(v) == 1:
+                v = next(iter(v))
+            else:
+                v = "{" + ", ".join(map(str, v)) + "}"
+            edges_to_show.append((u, v))
+        return f"PreOrder(Elements: {self.elements}, Hasse edges: {edges_to_show})"
 
 class PartialOrder(PreOrder):
     """
@@ -110,7 +128,17 @@ class PartialOrder(PreOrder):
         for a, b in combinations(self.elements, 2):
             if (a, b) in self.relations and (b, a) in self.relations and a != b:
                 raise ValueError(f"Pre-order not antisymmetric: both ({a}, {b}) and ({b}, {a}) for a != b")
-
+    
+    def __repr__(self) -> str:
+        edges = list(self.hasse_diagram.edges())
+        # Here every node is a singleton set since it's a partial order
+        edges_to_show = []
+        for edge in edges:
+            u, v = edge
+            u = next(iter(u))  # singleton
+            v = next(iter(v))  # singleton
+            edges_to_show.append((u, v))
+        return f"PartialOrder(Elements: {self.elements}, Hasse edges: {edges_to_show})"
 
 def total_order_from_list(elements: List[Any]) -> PartialOrder:
     """

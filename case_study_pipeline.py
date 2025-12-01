@@ -2,6 +2,7 @@ import random
 import itertools
 import matplotlib.pyplot as plt
 from collections import defaultdict
+from typing import Dict
 
 from LearningPriority.game import PosetalGame, Player, Metric, ActionProfile
 from LearningPriority.orders import PartialOrder
@@ -14,19 +15,21 @@ from LearningPriority.learning import (
 from LearningPriority.order_of_priority import all_partial_orders
 
 
-def generate_random_metrics(player_ids, actions, num_metrics):
+def generate_random_metrics(target_player_id: str, actions: Dict[str, set], num_metrics):
     """
     Generate a list of random metrics. Each metric is a function from action profile to a float in [0,1].
     """
     metrics = []
-    all_profiles = list(itertools.product(*[actions for _ in player_ids]))
+    player_ids = list(actions.keys())
+    all_profiles = list(itertools.product(*[actions[pid] for pid in player_ids]))
+
     for m in range(num_metrics):
         payoff_map = {}
         for ap in all_profiles:
             payoff_map[ap] = random.uniform(0, 1)
         def make_metric_func(payoff_map):
             return lambda ap: payoff_map[tuple(ap[pid] for pid in player_ids)]
-        metrics.append(Metric(f"M{m+1}", make_metric_func(payoff_map)))
+        metrics.append(Metric(f"{target_player_id}M{m+1}", make_metric_func(payoff_map)))
     return metrics
 
 
@@ -37,37 +40,39 @@ def enumerate_preferences(metric_names):
     return list(all_partial_orders(set(metric_names)))
 
 
-def build_players(player_ids, actions, metrics, true_prefs):
-    players = []
-    for pid, true_pref in zip(player_ids, true_prefs):
-        players.append(Player(pid, set(actions), metrics, true_pref))
-    return players
+def build_single_player(player_id, actions: Dict[str, set], num_metrics, max_preferences):
+    """
+    Build a single player with random metrics and a random true preference.
+    """
+    metrics = generate_random_metrics(player_id, actions, num_metrics)
+    metric_names = [m.name for m in metrics]
+    possible_prefs = enumerate_preferences(metric_names)
+    if len(possible_prefs) > max_preferences:
+        possible_prefs = random.sample(possible_prefs, max_preferences)
+    true_preference = random.choice(possible_prefs)
+    player = Player(player_id, actions=set(actions[player_id]), metrics=set(metrics), preference=true_preference)
+    return player, true_preference, possible_prefs
 
 
-def uniform_prior_beliefs(player_ids, possible_prefs):
-    prior = {}
-    for pid in player_ids:
-        prefs = possible_prefs[pid]
-        prob = 1.0 / len(prefs)
-        prior[pid] = PreferenceBelief({p: prob for p in prefs})
-    return prior
-
-
-def run_case_study(I=3, A=2, M=2, steps=20, seed=42):
+def run_case_study(I=3, A=2, M=2, max_preferences=10, steps=20, seed=42):
     random.seed(seed)
     player_ids = [f"P{i+1}" for i in range(I)]
-    actions = [f"A{j+1}" for j in range(A)]
-    metrics = generate_random_metrics(player_ids, actions, M)
-    metric_names = [m.name for m in metrics]
-    all_prefs = enumerate_preferences(metric_names)
-    # For tractability, limit to first 10 preferences if too many
-    if len(all_prefs) > 10:
-        all_prefs = all_prefs[:10]
-    possible_prefs = {pid: all_prefs for pid in player_ids}
-    true_prefs = [random.choice(all_prefs) for _ in player_ids]
-    players = build_players(player_ids, actions, metrics, true_prefs)
+    players = []
+    true_prefs = {}
+    possible_prefs = {}
+    prior = {}
+
+    # Build players with different metric sets and preferences
+    for pid in player_ids:
+        actions = {pid: {f"{pid}A{j+1}" for j in range(A)}}
+        player, true_pref, prefs = build_single_player(pid, actions, M, max_preferences)
+        true_prefs[pid] = true_pref
+        possible_prefs[pid] = prefs
+        players.append(player)
+        prob = 1.0 / len(prefs)
+        prior[pid] = PreferenceBelief({p: prob for p in prefs})
+
     game = PosetalGame(players)
-    prior = uniform_prior_beliefs(player_ids, possible_prefs)
 
     # Try both algorithms
     results = {}
@@ -77,7 +82,7 @@ def run_case_study(I=3, A=2, M=2, steps=20, seed=42):
     ]:
         algorithms = {pid: AlgClass() for pid in player_ids}
         lf = LearningFramework(game, prior, algorithms)
-        belief_trajectories = defaultdict(lambda: defaultdict(list))
+        belief_trajectories = {pid: {pref: [prior[pid].belief.get(pref, 0.0)] for pref in possible_prefs[pid]} for pid in player_ids}
         for step in range(steps):
             lf.run_iteration()
             for pid in player_ids:
@@ -85,27 +90,47 @@ def run_case_study(I=3, A=2, M=2, steps=20, seed=42):
                 for pref in possible_prefs[pid]:
                     belief_trajectories[pid][pref].append(belief.belief.get(pref, 0.0))
         results[alg_name] = (belief_trajectories, true_prefs, possible_prefs)
-    return results, player_ids
+    return results, player_ids, game
 
 
 def plot_belief_trajectories(results, player_ids, steps=20):
+    """
+    Plot belief trajectories per player for each algorithm.
+    Adapts to per-player preference sets and variable trajectory lengths.
+    """
     for alg_name, (belief_trajectories, true_prefs, possible_prefs) in results.items():
-        fig, axes = plt.subplots(len(player_ids), 1, figsize=(8, 3*len(player_ids)), sharex=True)
+        fig, axes = plt.subplots(len(player_ids), 1, figsize=(10, 3.2*len(player_ids)), sharex=True)
         if len(player_ids) == 1:
             axes = [axes]
         for i, pid in enumerate(player_ids):
             ax = axes[i]
+            # Determine actual number of recorded steps (robust to mismatch)
+            recorded_steps = 0
+            if possible_prefs[pid]:
+                # Use the maximum length among existing trajectories for this player
+                recorded_steps = max(
+                    (len(belief_trajectories[pid].get(pref, [])) for pref in possible_prefs[pid]),
+                    default=0,
+                )
+            x = list(range(recorded_steps or steps))
+
+            # Plot each preference trajectory for this player
             for pref in possible_prefs[pid]:
-                ax.plot(range(steps), belief_trajectories[pid][pref], label=str(pref))
-            ax.set_title(f"Player {pid} (True: {true_prefs[i]})")
+                # Safely retrieve trajectory; default to zeros if missing
+                y = belief_trajectories[pid].get(pref, [0.0] * (recorded_steps or steps))
+                ax.plot(x[:len(y)], y, label=str(pref))
+
+            ax.set_title(f"Player {pid} (True pref: {true_prefs[pid]})")
             ax.set_ylabel("Belief")
-            ax.legend(fontsize='small', bbox_to_anchor=(1.05, 1), loc='upper left')
+            # Place legend outside to avoid clutter when many prefs exist
+            ax.legend(fontsize='small', bbox_to_anchor=(1.02, 1), loc='upper left', ncol=1)
+
         axes[-1].set_xlabel("Step")
         fig.suptitle(f"Belief Trajectories ({alg_name} algorithm)")
-        plt.tight_layout(rect=[0, 0, 1, 0.97])
+        plt.tight_layout(rect=(0, 0, 1, 0.96))
         plt.show()
 
 
 if __name__ == "__main__":
-    results, player_ids = run_case_study(I=3, A=2, M=2, steps=20, seed=42)
+    results, player_ids, true_game = run_case_study(I=3, A=2, M=2, steps=20, seed=42)
     plot_belief_trajectories(results, player_ids, steps=20)
