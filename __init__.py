@@ -2,7 +2,7 @@
 LearningPriority: A framework for posetal games and preference learning.
 """
 
-from .orders import PartialOrder, PreOrder, minimal_elements, maximal_elements, total_order_from_list
+from .orders import PartialOrder, PreOrder, minimal_elements, maximal_elements, total_order_from_list, completions_of_poset
 from .order_of_priority import all_partial_orders
 from .game import Metric, Player, PosetalGame, ActionProfile, best_response, game_from_preference_dict
 from .nash_finder import is_pure_nash_equilibrium, find_pure_nash_equilibria, find_admissible_nash_equilibria, find_admissible_nash_equilibria_with_preferences

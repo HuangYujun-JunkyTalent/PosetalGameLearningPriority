@@ -1,8 +1,8 @@
 """
 Module for handling pre-orders and partial orders.
 """
-from typing import Set, Tuple, List, Any
-from itertools import combinations
+from typing import Set, Tuple, List, Any, Iterator
+from itertools import combinations, permutations
 
 import networkx as nx
 
@@ -168,6 +168,49 @@ def maximal_elements(poset: PreOrder) -> Set[Any]:
     for node in _terminal_nodes(poset.hasse_diagram):
         maximals.update(node)
     return maximals
+
+def completions_of_poset(poset: PartialOrder) -> Iterator[PartialOrder]:
+    """
+    Generate all total order completions of the given partial order.
+    Note: This can be computationally expensive for large posets.
+    """
+    # Generate all linear extensions via backtracking on minimal elements.
+    # Build adjacency and indegree from the Hasse diagram (cover relations).
+    node_to_elem = {}
+    for node in poset.hasse_diagram.nodes():
+        if isinstance(node, frozenset):
+            if len(node) != 1:
+                raise ValueError("PartialOrder has non-singleton node in Hasse diagram")
+            elem = next(iter(node))
+        else:
+            elem = node
+        node_to_elem[node] = elem
+
+    adj = {node_to_elem[n]: set() for n in poset.hasse_diagram.nodes()}
+    indeg = {node_to_elem[n]: 0 for n in poset.hasse_diagram.nodes()}
+    for u, v in poset.hasse_diagram.edges():
+        ue = node_to_elem[u]
+        ve = node_to_elem[v]
+        if ve not in adj[ue]:
+            adj[ue].add(ve)
+            indeg[ve] += 1
+
+    def _backtrack(order: List[Any], available: Set[Any], current_indeg: dict) -> Iterator[PartialOrder]:
+        if len(order) == len(adj):
+            yield total_order_from_list(order)
+            return
+        for elem in list(available):
+            new_available = set(available)
+            new_available.remove(elem)
+            new_indeg = dict(current_indeg)
+            for succ in adj[elem]:
+                new_indeg[succ] -= 1
+                if new_indeg[succ] == 0:
+                    new_available.add(succ)
+            yield from _backtrack(order + [elem], new_available, new_indeg)
+
+    initial_available = {e for e, d in indeg.items() if d == 0}
+    yield from _backtrack([], initial_available, indeg)
 
 def _source_nodes(diagram: nx.DiGraph) -> List[Any]:
     sources = []
