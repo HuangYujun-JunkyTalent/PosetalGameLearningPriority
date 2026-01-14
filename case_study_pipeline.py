@@ -69,8 +69,11 @@ def run_case_study(I=3, A=2, M=2, max_preferences=10, steps=20, seed=42):
         true_prefs[pid] = true_pref
         possible_prefs[pid] = prefs
         players.append(player)
-        prob = 1.0 / len(prefs)
-        prior[pid] = PreferenceBelief({p: prob for p in prefs})
+        # randomly generate prior beliefs, just ensure non of them are zero
+        probs = [random.uniform(0.3, 1.0) for _ in prefs]
+        total_prob = sum(probs)
+        probs = [p / total_prob for p in probs]
+        prior[pid] = PreferenceBelief({p: prob for p, prob in zip(prefs, probs)})
 
     game = PosetalGame(players)
 
@@ -93,11 +96,13 @@ def run_case_study(I=3, A=2, M=2, max_preferences=10, steps=20, seed=42):
     return results, player_ids, game
 
 
-def plot_belief_trajectories(results, player_ids, steps=20):
+def plot_belief_trajectories(results, player_ids, steps=20, print_title=True, print_legend=True, simple_tilte=False, simple_legend=False, algo_name=None):
     """
     Plot belief trajectories per player for each algorithm.
     Adapts to per-player preference sets and variable trajectory lengths.
     """
+    if algo_name:
+        results = {algo_name: results[algo_name]}
     for alg_name, (belief_trajectories, true_prefs, possible_prefs) in results.items():
         fig, axes = plt.subplots(len(player_ids), 1, figsize=(10, 3.2*len(player_ids)), sharex=True)
         if len(player_ids) == 1:
@@ -118,17 +123,26 @@ def plot_belief_trajectories(results, player_ids, steps=20):
             for pref in possible_prefs[pid]:
                 # Safely retrieve trajectory; default to zeros if missing
                 y = belief_trajectories[pid].get(pref, [0.0] * (recorded_steps or steps))
-                ax.plot(x[:len(y)], y, label=str(pref))
-
-            ax.set_title(f"Player {pid} (True pref: {true_prefs[pid]})")
+                if not simple_legend:
+                    ax.plot(x[:len(y)], y, label=str(pref))
+                else:
+                    ax.plot(x[:len(y)], y, label=f"Pref {possible_prefs[pid].index(pref)+1}")
+            if print_title:
+                if not simple_tilte:
+                    ax.set_title(f"Player {pid} (True pref: {true_prefs[pid]})")
+                else:
+                    ax.set_title(f"Player {pid} (True pref: Pref {possible_prefs[pid].index(true_prefs[pid])+1})")
             ax.set_ylabel("Belief")
             # Place legend outside to avoid clutter when many prefs exist
-            ax.legend(fontsize='small', bbox_to_anchor=(1.02, 1), loc='upper left', ncol=1)
+            if print_legend:
+                ax.legend(fontsize='small', bbox_to_anchor=(1.02, 1), loc='upper left', ncol=1)
 
         axes[-1].set_xlabel("Step")
         fig.suptitle(f"Belief Trajectories ({alg_name} algorithm)")
         plt.tight_layout(rect=(0, 0, 1, 0.96))
         plt.show()
+        
+    return fig, axes
 
 
 if __name__ == "__main__":
