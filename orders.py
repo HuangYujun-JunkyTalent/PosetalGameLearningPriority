@@ -98,6 +98,11 @@ class PreOrder:
 
     def __hash__(self):
         return hash(tuple([frozenset(self.elements), frozenset(self.relations)]))
+    
+    def __eq__(self, value: object) -> bool:
+        if not isinstance(value, PreOrder):
+            return False
+        return self.elements == value.elements and self.relations == value.relations
 
     def __repr__(self) -> str:
         # Use edges of the Hasse diagram for concise representation

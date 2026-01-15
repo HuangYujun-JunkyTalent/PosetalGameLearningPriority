@@ -3,6 +3,7 @@ Unit tests for orders.py: completions of partial orders.
 """
 import unittest
 from typing import Iterable
+import itertools
 
 from LearningPriority.orders import PartialOrder, completions_of_poset
 
@@ -64,6 +65,44 @@ class TestCompletionsOfPoset(unittest.TestCase):
         has_c_before_b = any(("c", "b") in c.relations for c in completions)
         self.assertTrue(has_b_before_c)
         self.assertTrue(has_c_before_b)
+    
+    def test_no_relations_four_elements(self):
+        elements = {"a", "b", "c", "d"}
+        relations = set()
+        poset = PartialOrder(elements, relations)
+
+        completions = to_list(completions_of_poset(poset))
+        self.assertEqual(len(completions), 24)  # 4! = 24 total orders
+        # enumerate all permutations to verify
+        for perm in itertools.permutations(elements):
+            relations = set([
+                (perm[i], perm[j]) for i in range(len(perm)) for j in range(i + 1, len(perm))
+            ])
+            assert len(relations) == 6  # 4 choose 2
+            this_order = PartialOrder(elements, relations)
+            self.assertTrue(this_order in completions)
+    
+    def test_fork_four_elements(self):
+        elements = {"a", "b", "c", "d"}
+        relations = set([("b", "a"), ("c", "a"), ("d", "a")])
+        poset = PartialOrder(elements, relations)
+
+        completions = to_list(completions_of_poset(poset))
+        self.assertEqual(len(completions), 6)  # 3! = 6 ways to order b,c,d above a
+        self.assertTrue(all(is_total_order(c) for c in completions))
+
+        for completion in completions:
+            print(completion.relations)
+
+        # check all permutations of b,c,d appear
+        for perm in itertools.permutations(["b", "c", "d"]):
+            relations = set([("b", "a"), ("c", "a"), ("d", "a")])
+            for i in range(len(perm)):
+                for j in range(i + 1, len(perm)):
+                    relations.add((perm[i], perm[j]))
+            this_order = PartialOrder(elements, relations)
+            print("Checking order:", this_order.relations)
+            self.assertTrue(this_order in completions)
 
 
 if __name__ == "__main__":
