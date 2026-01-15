@@ -36,7 +36,7 @@ class PreferenceBelief:
 
         # Normalize
         if total != 1.0:
-            warnings.warn("Normalizing prior belief")
+            warnings.warn("Normalizing posterior belief")
             for pref in self.belief:
                 self.belief[pref] /= total
     

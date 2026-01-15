@@ -53,8 +53,8 @@ class TestPreferenceBelief(unittest.TestCase):
 class TestUpdateBelief(unittest.TestCase):
     def test_bayesian_update(self):
         """Test Bayesian belief update."""
-        pref1 = PartialOrder({"M1"}, {("M1", "M1")})
-        pref2 = PartialOrder({"M1"}, {("M1", "M1")})
+        pref1 = PartialOrder({"M1", "M2"}, set())
+        pref2 = PartialOrder({"M1", "M2"}, {("M1", "M2")})
         
         prior = PreferenceBelief({pref1: 0.5, pref2: 0.5})
         
@@ -62,6 +62,8 @@ class TestUpdateBelief(unittest.TestCase):
         likelihoods = {pref1: 0.9, pref2: 0.1}
         
         posterior = update_belief(prior, likelihoods)
+
+        # print(posterior.belief)
         
         # Posterior should favor pref1
         self.assertGreater(posterior.belief[pref1], posterior.belief[pref2])
